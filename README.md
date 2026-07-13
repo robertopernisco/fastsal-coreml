@@ -1,35 +1,35 @@
 # fastsal-coreml
 
-**FastSal-FT → CoreML**: il FastSal fine-tuned LensIQ (distillato da DeepGaze MSDB sul
-corpus privato 37.757 foto, vedi repo `lensiq-saliency-ft`) convertito in `.mlpackage`.
-Saliency on-device ultra-veloce: **2.83 ms/foto** su Apple Silicon.
+**FastSal-FT → CoreML**: LensIQ's fine-tuned FastSal (distilled from DeepGaze MSDB on a
+37,757-photo private corpus, see the `lensiq-saliency-ft` repo) converted to
+`.mlpackage`. Ultra-fast on-device saliency: **2.83 ms/photo** on Apple Silicon.
 
-A differenza di DeepGaze (repo `deepgaze-coreml`), qui il modello È nel repo (7.4 MB)
-insieme ai pesi torch FT — questo repo privato fa anche da **backup dei pesi FT**,
-che altrove sono gitignored.
+Unlike DeepGaze (see the `deepgaze-coreml` repo), here the model **is in the repo**
+(7.4 MB) together with the fine-tuned torch weights.
 
-## Risultati
+## Results
 
-| | valore | note |
+| | value | notes |
 |---|---|---|
-| **Velocità** | **2.83 ms/foto** CPU_AND_GPU (Mac16 M2) | CPU_ONLY 3.67 ms |
-| **Fedeltà conversione** | **CC 0.99999** vs torch-FT fp32 | fp16; max\|Δ\| 0.165 su scala logit = rumore |
-| **Qualità vs DeepGaze** | gridCC **0.83** (val 3775 foto) | dal FT: Δcenter_bias 0.074, vedi lensiq-saliency-ft |
-| Input | **fisso 192×256**, ImageNet-norm | `fastsal_loader.preprocess_np` |
-| Architettura | MobileNetV2 (~3.5 M param) | distillato sui target consumati (grid/peak/cb/disp) |
+| **Speed** | **2.83 ms/photo** CPU_AND_GPU (M2, 16GB) | CPU_ONLY 3.67 ms |
+| **Conversion fidelity** | **CC 0.99999** vs torch-FT fp32 | fp16; max\|Δ\| 0.165 on logit scale = noise |
+| **Quality vs DeepGaze** | grid CC **0.83** (3,775-photo val) | from the FT: Δcenter_bias 0.074, see lensiq-saliency-ft |
+| Input | **fixed 192×256**, ImageNet norm | `fastsal_loader.preprocess_np` |
+| Architecture | MobileNetV2 (~3.5 M params) | distilled on the consumed targets (grid/peak/cb/disp) |
 
-Trade-off vs DeepGaze-CoreML: **~1580× più veloce** (2.8 ms vs 4.47 s), qualità
-approssimata (gridCC 0.83 vs 0.999). La scelta è per-caso-d'uso, vedi memo saliency.
+Trade-off vs DeepGaze-CoreML: **~1580× faster** (2.8 ms vs 4.47 s), approximate quality
+(grid CC 0.83 vs 0.999). Pick per use case: near-free saliency → FastSal-FT;
+maximum fidelity → DeepGaze-CoreML.
 
-## Contenuto
+## Contents
 
-- `weights/fastsal_ft.mlpackage` — il modello CoreML pronto (fp16, 7.4 MB)
-- `weights/fastsal_ft_best.pth` — pesi torch FT (epoch 4, gridCC 0.8311) — BACKUP
-- `convert_fastsal_coreml.py` — riconversione .pth → .mlpackage (trace + ct.convert, ~2 s)
-- `export_fastsal_onnx.py` — export alternativo .pth → ONNX (per onnxruntime/CoreML-EP)
-- `fastsal_loader.py` — loader torch con shim torchvision + preprocessing (192×256)
+- `weights/fastsal_ft.mlpackage` — the ready-to-use CoreML model (fp16, 7.4 MB)
+- `weights/fastsal_ft_best.pth` — fine-tuned torch weights (epoch 4, grid CC 0.8311)
+- `convert_fastsal_coreml.py` — reconversion .pth → .mlpackage (trace + ct.convert, ~2 s)
+- `export_fastsal_onnx.py` — alternative export .pth → ONNX (for onnxruntime / CoreML-EP)
+- `fastsal_loader.py` — torch loader with torchvision shims + preprocessing (192×256)
 
-## Uso
+## Usage
 
 ```python
 import coremltools as ct, numpy as np
@@ -37,17 +37,25 @@ from fastsal_loader import preprocess_np
 
 m = ct.models.MLModel("weights/fastsal_ft.mlpackage",
                       compute_units=ct.ComputeUnit.CPU_AND_GPU)
-x = preprocess_np("foto.jpg")[None]          # [1,3,192,256] fp32
-sal = m.predict({"image": x})["saliency"]    # mappa saliency (logit, min-max a valle)
+x = preprocess_np("photo.jpg")[None]         # [1,3,192,256] fp32
+sal = m.predict({"image": x})["saliency"]    # saliency map (logits; min-max downstream)
 ```
 
-Per riconvertire da zero (richiede il repo sorgente FastSal per il codice modello —
-path via env `FASTSAL_DIR`):
+To reconvert from scratch (requires the FastSal source repo for the model code —
+path via the `FASTSAL_DIR` env var):
 
 ```bash
 pip install torch torchvision coremltools pillow numpy
 python convert_fastsal_coreml.py
 ```
 
-NB: `CPU_AND_NE` escluso — la compilazione ANE fallisce su Apple Silicon (stesso
-esito di DeepGaze: CoreML = GPU only su queste macchine).
+NB: `CPU_AND_NE` is excluded — ANE compilation fails on Apple Silicon (same outcome
+as DeepGaze: CoreML = GPU only on these machines).
+
+## Provenance & license notes
+
+The fine-tuned weights are distilled from the outputs of
+[DeepGaze MSDB](https://github.com/matthias-k/DeepGaze) (research use) on a private
+photo corpus; the FastSal architecture and initialization come from
+[FastSal](https://github.com/feiyanhu/FastSal) (SALICON weights). Released for
+research/portfolio purposes — check the upstream licenses before any commercial use.
